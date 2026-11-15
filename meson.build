@@ -57,6 +57,7 @@ deps = [
 
 executable(
     'power-control',
+    'src/config_parser.cpp',
     'src/power_control.cpp',
     include_directories: include_directories('src'),
     cpp_args: cpp_args,
@@ -64,6 +65,10 @@ executable(
     install: true,
     install_dir: get_option('bindir'),
 )
+
+if get_option('tests').allowed()
+    subdir('tests')
+endif
 
 systemd = dependency('systemd')
 if systemd.found()

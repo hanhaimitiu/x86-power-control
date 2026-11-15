@@ -73,6 +73,7 @@
             "Polarity": "ActiveLow"
         },
         {
+            "Name": "PlatformReset",
             "Type": "DBUS",
             "DbusName": "xyz.openbmc_project.Host.Misc.Manager",
             "Path": "/xyz/openbmc_project/misc/platform_state",
@@ -85,7 +86,7 @@
         "ForceOffPulseMs": 15000,
         "ResetPulseMs": 500,
         "PowerCycleMs": 5000,
-        "SioPowerGoodWatchdogMs": 1000,
+        "SioPowerGoodWatchdogMs": 12000,
         "PowerOKWatchdogMs": 8000,
         "GracefulPowerOffS": 300,
         "WarmResetCheckMs": 500,
