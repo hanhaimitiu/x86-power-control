@@ -30,14 +30,14 @@
   .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--ink2);margin-bottom:8px;}
   .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
   .graph-wrap{background:var(--paper);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
-  svg{display:block;width:100%;height:auto;user-select:none;}
+  svg{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;touch-action:none;}
   .edge path{fill:none;stroke:#9aabad;stroke-width:1.5;transition:stroke .15s,stroke-width .15s,opacity .15s;}
   .edge.hl path{stroke:var(--accent-deep);stroke-width:2.8;}
   .edge.dim{opacity:.1;}
   .edge text{font-size:10px;fill:var(--ink2);paint-order:stroke;stroke:var(--paper);stroke-width:3px;
     stroke-linejoin:round;cursor:default;}
   .edge.hl text{fill:var(--accent-deep);font-weight:700;}
-  .node{cursor:grab;}
+  .node{cursor:grab;-webkit-user-drag:none;}
   .node rect{stroke-width:1.6;transition:stroke .15s,stroke-width .15s;}
   .node:hover rect,.node.sel rect{stroke:var(--accent-deep);stroke-width:2.6;}
   .node.dim{opacity:.28;}
@@ -178,7 +178,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const el = (tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n;};
 let currentGroup='all', selected=null, selectedEdge=null;
 let nodeEls={}, edgeEls=[];
-let dragging=null, dragOff={x:0,y:0}, moved=false, downPt={x:0,y:0};
+let dragging=null, dragOff={x:0,y:0}, moved=false, downClient={x:0,y:0};
 
 function hashCurve(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return ((h%7)-3)*15;}
 function rectPoint(s,toward){
@@ -283,8 +283,9 @@ function render(){
     const rect=el('rect',{rx:6},g);
     const text=el('text',{class:'nl'},g); text.textContent=s.label;
     const title=el('title',{},g); title.textContent=s.full+'\n'+s.desc+'\n（可拖动）';
-    g.addEventListener('mousedown',e=>startDrag(e,id));
-    g.addEventListener('touchstart',e=>startDrag(e,id),{passive:false});
+    if(HAS_POINTER) g.addEventListener('pointerdown',e=>startDrag(e,id));
+    else { g.addEventListener('mousedown',e=>startDrag(e,id));
+           g.addEventListener('touchstart',e=>startDrag(e,id),{passive:false}); }
     g.addEventListener('click',e=>{
       e.stopPropagation();
       if(moved)return;
@@ -305,35 +306,56 @@ function render(){
   });
   updatePositions();
 }
+const HAS_POINTER = ('PointerEvent' in window);
+function evPoint(e){ return e.touches ? e.touches[0] : e; }
 function clientToSvg(e){
-  const r=svg.getBoundingClientRect();
-  const cx=e.touches?e.touches[0].clientX:e.clientX, cy=e.touches?e.touches[0].clientY:e.clientY;
-  return {x:(cx-r.left)/r.width*VB_W, y:(cy-r.top)/r.height*VB_H};
+  const r=svg.getBoundingClientRect(), p=evPoint(e);
+  return {x:(p.clientX-r.left)/r.width*VB_W, y:(p.clientY-r.top)/r.height*VB_H};
 }
 function startDrag(e,id){
   if(e.button!==undefined&&e.button!==0)return;
-  const pt=clientToSvg(e);
+  if(dragging)return;                       // 防止 pointer + mouse 兼容事件重复触发
+  const pt=clientToSvg(e), p=evPoint(e);
   dragging=id; moved=false;
   dragOff.x=pt.x-STATES[id].x; dragOff.y=pt.y-STATES[id].y;
-  downPt=pt;
+  downClient={x:p.clientX,y:p.clientY};
   svg.classList.add('dragging');
-  e.preventDefault();
+  // 关键修复：把移动/抬起监听动态绑到 window，指针移出节点或画布也能继续拖
+  if(HAS_POINTER){
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',endDrag);
+    window.addEventListener('pointercancel',endDrag);
+  }else{
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',endDrag);
+    window.addEventListener('touchmove',onMove,{passive:false});
+    window.addEventListener('touchend',endDrag);
+  }
 }
 function onMove(e){
   if(!dragging)return;
+  const p=evPoint(e);
+  if(Math.hypot(p.clientX-downClient.x,p.clientY-downClient.y)>3)moved=true;
   const pt=clientToSvg(e);
   const nx=Math.max(NW/2,Math.min(VB_W-NW/2,pt.x-dragOff.x));
   const ny=Math.max(NH/2+6,Math.min(VB_H-NH/2,pt.y-dragOff.y));
-  if(Math.hypot(pt.x-downPt.x,pt.y-downPt.y)>3)moved=true;
   STATES[dragging].x=nx; STATES[dragging].y=ny;
   updatePositions();
-  e.preventDefault();
 }
-function endDrag(){dragging=null;svg.classList.remove('dragging');}
-svg.addEventListener('mousemove',onMove);
-svg.addEventListener('touchmove',onMove,{passive:false});
-window.addEventListener('mouseup',endDrag);
-window.addEventListener('touchend',endDrag);
+function endDrag(){
+  if(!dragging)return;
+  dragging=null; svg.classList.remove('dragging');
+  if(HAS_POINTER){
+    window.removeEventListener('pointermove',onMove);
+    window.removeEventListener('pointerup',endDrag);
+    window.removeEventListener('pointercancel',endDrag);
+  }else{
+    window.removeEventListener('mousemove',onMove);
+    window.removeEventListener('mouseup',endDrag);
+    window.removeEventListener('touchmove',onMove);
+    window.removeEventListener('touchend',endDrag);
+  }
+}
 svg.addEventListener('click',()=>{if(!moved){selectedEdge=null;selected=null;render();renderDetail();}});
 
 const tb=document.getElementById('toolbar');
