@@ -32,11 +32,13 @@
   .graph-wrap{background:var(--paper);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
   svg{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;touch-action:none;}
   .edge path{fill:none;stroke:#9aabad;stroke-width:1.5;transition:stroke .15s,stroke-width .15s,opacity .15s;}
-  .edge.hl path{stroke:var(--accent-deep);stroke-width:2.8;}
+  .edge path.hit{stroke:transparent;stroke-width:16;cursor:grab;}
+  .edge.hl path:not(.hit){stroke:var(--accent-deep);stroke-width:2.8;}
   .edge.dim{opacity:.1;}
   .edge text{font-size:10px;fill:var(--ink2);paint-order:stroke;stroke:var(--paper);stroke-width:3px;
-    stroke-linejoin:round;cursor:default;}
+    stroke-linejoin:round;cursor:grab;}
   .edge.hl text{fill:var(--accent-deep);font-weight:700;}
+  svg.dragging .edge path.hit,svg.dragging .edge text{cursor:grabbing;}
   .node{cursor:grab;-webkit-user-drag:none;}
   .node rect{stroke-width:1.6;transition:stroke .15s,stroke-width .15s;}
   .node:hover rect,.node.sel rect{stroke:var(--accent-deep);stroke-width:2.6;}
@@ -74,6 +76,7 @@
     先记住开机那条主线：<b>Off →（开机请求/按电源键）→ Wait for Power OK → Wait for SIO Power Good → On</b>。
     图上每条线都标了触发它的<b>事件</b>（如 <code>POWER_OK↑</code>、<code>电源键</code>、<code>软关超时</code>），
     <code>↑</code>=信号拉高、<code>↓</code>=拉低。<b>节点可以拖动</b>——线太挤就自己把状态拖开；
+    <b>节点可拖动</b>，<b>线也能拖动</b>——线重叠时按住线或它的事件标签拖一下就能弯开（自环可上下拖）。
     <b>点任一状态或任一事件标签</b>，下方列出它的源码行号和业务说明。可按上方按钮只看某类业务。
   </div>
 
@@ -178,7 +181,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const el = (tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n;};
 let currentGroup='all', selected=null, selectedEdge=null;
 let nodeEls={}, edgeEls=[];
-let dragging=null, dragOff={x:0,y:0}, moved=false, downClient={x:0,y:0};
+let dragging=null, draggingEdge=null, dragOff={x:0,y:0}, moved=false, downClient={x:0,y:0}, edgeDragBase=null;
 
 function hashCurve(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return ((h%7)-3)*15;}
 function rectPoint(s,toward){
@@ -190,10 +193,11 @@ function rectPoint(s,toward){
 function edgeGeom(t){
   const s=STATES[t.f], e=STATES[t.t];
   if(t.self){
-    return {d:'M '+(s.x-28)+' '+(s.y-NH/2)+' C '+(s.x-72)+' '+(s.y-96)+', '+(s.x+72)+' '+(s.y-96)+', '+(s.x+28)+' '+(s.y-NH/2), lx:s.x, ly:s.y-94};
+    const h=t.selfH||96;
+    return {d:'M '+(s.x-28)+' '+(s.y-NH/2)+' C '+(s.x-72)+' '+(s.y-h)+', '+(s.x+72)+' '+(s.y-h)+', '+(s.x+28)+' '+(s.y-NH/2), lx:s.x, ly:s.y-h+2};
   }
   const len=Math.hypot(e.x-s.x,e.y-s.y)||1;
-  const curve=hashCurve(t.f+'>'+t.t+t.e)*Math.min(1,len/240);
+  const curve=(t.uc!==undefined?t.uc:hashCurve(t.f+'>'+t.t+t.e)*Math.min(1,len/240));
   const p1=rectPoint(s,e), p2=rectPoint(e,s);
   const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
   const nx=-(p2.y-p1.y)/len, ny=(p2.x-p1.x)/len;
@@ -209,6 +213,7 @@ function updatePositions(){
   for(const it of edgeEls){
     const g=edgeGeom(it.t);
     it.path.setAttribute('d',g.d);
+    if(it.hit)it.hit.setAttribute('d',g.d);
     if(it.text){it.text.setAttribute('x',g.lx);it.text.setAttribute('y',g.ly);}
   }
 }
@@ -257,16 +262,28 @@ function render(){
   visibleEdges().forEach(t=>{
     const g=el('g',{class:'edge'},gEdges);
     const path=el('path',{'marker-end':'url(#arw)'},g);
+    const hit=el('path',{class:'hit'},g);           // 透明粗线：拖整条线用
     const text=el('text',{'text-anchor':'middle'},g);
     text.textContent=EV[t.e]||t.e;
     const title=el('title',{},g);
-    title.textContent=(EV[t.e]||t.e)+' → '+STATES[t.t].full+'  (power_control.cpp:'+t.ln+')\n'+t.note+(t.cond?'\n条件：'+t.cond:'');
+    title.textContent=(EV[t.e]||t.e)+' → '+STATES[t.t].full+'  (power_control.cpp:'+t.ln+')\n'+t.note+(t.cond?'\n条件：'+t.cond:'')+'\n（可拖动线/标签来避开重叠）';
+    const item={g,path,hit,text,t};
+    if(HAS_POINTER){
+      hit.addEventListener('pointerdown',e=>startEdgeDrag(e,item));
+      text.addEventListener('pointerdown',e=>startEdgeDrag(e,item));
+    }else{
+      hit.addEventListener('mousedown',e=>startEdgeDrag(e,item));
+      text.addEventListener('mousedown',e=>startEdgeDrag(e,item));
+      hit.addEventListener('touchstart',e=>startEdgeDrag(e,item),{passive:false});
+      text.addEventListener('touchstart',e=>startEdgeDrag(e,item),{passive:false});
+    }
     g.addEventListener('mouseenter',()=>{
-      if(dragging)return;
+      if(dragging||draggingEdge)return;
       path.setAttribute('marker-end','url(#arwH)');g.classList.add('hl');
       if(selected||selectedEdge)edgeEls.forEach(x=>{if(x.g!==g)x.g.classList.add('dim');});
     });
     g.addEventListener('mouseleave',()=>{
+      if(dragging||draggingEdge)return;
       path.setAttribute('marker-end','url(#arw)');g.classList.remove('hl');
       edgeEls.forEach(x=>x.g.classList.remove('dim'));
     });
@@ -275,7 +292,7 @@ function render(){
       if(moved)return;
       selectedEdge=t;selected=null;render();renderDetail();
     });
-    edgeEls.push({g,path,text,t});
+    edgeEls.push(item);
   });
   visibleStateIds().forEach(id=>{
     const s=STATES[id];
@@ -312,15 +329,7 @@ function clientToSvg(e){
   const r=svg.getBoundingClientRect(), p=evPoint(e);
   return {x:(p.clientX-r.left)/r.width*VB_W, y:(p.clientY-r.top)/r.height*VB_H};
 }
-function startDrag(e,id){
-  if(e.button!==undefined&&e.button!==0)return;
-  if(dragging)return;                       // 防止 pointer + mouse 兼容事件重复触发
-  const pt=clientToSvg(e), p=evPoint(e);
-  dragging=id; moved=false;
-  dragOff.x=pt.x-STATES[id].x; dragOff.y=pt.y-STATES[id].y;
-  downClient={x:p.clientX,y:p.clientY};
-  svg.classList.add('dragging');
-  // 关键修复：把移动/抬起监听动态绑到 window，指针移出节点或画布也能继续拖
+function attachDragListeners(){
   if(HAS_POINTER){
     window.addEventListener('pointermove',onMove);
     window.addEventListener('pointerup',endDrag);
@@ -332,19 +341,7 @@ function startDrag(e,id){
     window.addEventListener('touchend',endDrag);
   }
 }
-function onMove(e){
-  if(!dragging)return;
-  const p=evPoint(e);
-  if(Math.hypot(p.clientX-downClient.x,p.clientY-downClient.y)>3)moved=true;
-  const pt=clientToSvg(e);
-  const nx=Math.max(NW/2,Math.min(VB_W-NW/2,pt.x-dragOff.x));
-  const ny=Math.max(NH/2+6,Math.min(VB_H-NH/2,pt.y-dragOff.y));
-  STATES[dragging].x=nx; STATES[dragging].y=ny;
-  updatePositions();
-}
-function endDrag(){
-  if(!dragging)return;
-  dragging=null; svg.classList.remove('dragging');
+function detachDragListeners(){
   if(HAS_POINTER){
     window.removeEventListener('pointermove',onMove);
     window.removeEventListener('pointerup',endDrag);
@@ -355,6 +352,68 @@ function endDrag(){
     window.removeEventListener('touchmove',onMove);
     window.removeEventListener('touchend',endDrag);
   }
+}
+function startDrag(e,id){
+  if(e.button!==undefined&&e.button!==0)return;
+  if(dragging||draggingEdge)return;                       // 防止兼容事件重复触发
+  const pt=clientToSvg(e), p=evPoint(e);
+  dragging=id; draggingEdge=null; moved=false;
+  dragOff.x=pt.x-STATES[id].x; dragOff.y=pt.y-STATES[id].y;
+  downClient={x:p.clientX,y:p.clientY};
+  svg.classList.add('dragging');
+  attachDragListeners();
+}
+function startEdgeDrag(e,item){
+  if(e.button!==undefined&&e.button!==0)return;
+  if(dragging||draggingEdge)return;
+  const p=evPoint(e), pt=clientToSvg(e);
+  draggingEdge=item; dragging=null; moved=false;
+  downClient={x:p.clientX,y:p.clientY};
+  // 记录基准：普通边用中点/法向求曲率；自环用起点 y 求高度
+  const s=STATES[item.t.f], en=STATES[item.t.t];
+  edgeDragBase={pt0:pt};
+  if(item.t.self){
+    edgeDragBase.self=true;
+    edgeDragBase.startH=item.t.selfH||96;
+    edgeDragBase.startY=s.y;
+  }else{
+    edgeDragBase.self=false;
+    const p1=rectPoint(s,en), p2=rectPoint(en,s);
+    const len=Math.hypot(en.x-s.x,en.y-s.y)||1;
+    edgeDragBase.mx=(p1.x+p2.x)/2; edgeDragBase.my=(p1.y+p2.y)/2;
+    edgeDragBase.nx=-(p2.y-p1.y)/len; edgeDragBase.ny=(p2.x-p1.x)/len;
+    edgeDragBase.startUc=(item.t.uc!==undefined?item.t.uc:hashCurve(item.t.f+'>'+item.t.t+item.t.e)*Math.min(1,len/240));
+  }
+  svg.classList.add('dragging');
+  attachDragListeners();
+}
+function onMove(e){
+  if(!dragging&&!draggingEdge)return;
+  const p=evPoint(e);
+  if(Math.hypot(p.clientX-downClient.x,p.clientY-downClient.y)>3)moved=true;
+  if(dragging){
+    const pt=clientToSvg(e);
+    const nx=Math.max(NW/2,Math.min(VB_W-NW/2,pt.x-dragOff.x));
+    const ny=Math.max(NH/2+6,Math.min(VB_H-NH/2,pt.y-dragOff.y));
+    STATES[dragging].x=nx; STATES[dragging].y=ny;
+  }else if(draggingEdge){
+    const pt=clientToSvg(e), b=edgeDragBase;
+    if(b.self){
+      // 自环：鼠标上移抬高弧顶（h 变大），下移压低
+      draggingEdge.t.selfH=Math.max(40,Math.min(260,b.startH+(b.startY-96+2-pt.y)));
+    }else{
+      // 普通边：鼠标沿法向偏离基准中点的位移 → 曲线控制点偏移
+      const delta=(pt.x-b.mx)*b.nx+(pt.y-b.my)*b.ny;
+      const target=2*delta;   // 控制点偏移约为标签位移的 2 倍
+      draggingEdge.t.uc=Math.max(-260,Math.min(260,target));
+    }
+  }
+  updatePositions();
+}
+function endDrag(){
+  if(!dragging&&!draggingEdge)return;
+  dragging=null; draggingEdge=null; svg.classList.remove('dragging');
+  detachDragListeners();
 }
 svg.addEventListener('click',()=>{if(!moved){selectedEdge=null;selected=null;render();renderDetail();}});
 
@@ -374,6 +433,7 @@ const rb=document.createElement('button');
 rb.className='reset';rb.textContent='重置位置';
 rb.addEventListener('click',()=>{
   for(const id in INIT){STATES[id].x=INIT[id].x;STATES[id].y=INIT[id].y;}
+  T.forEach(t=>{delete t.uc;delete t.selfH;});   // 一并清除手动拖出来的线形
   updatePositions();
 });
 tb.appendChild(rb);
