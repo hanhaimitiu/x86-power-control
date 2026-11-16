@@ -280,7 +280,7 @@ function render(){
   visibleStateIds().forEach(id=>{
     const s=STATES[id];
     const g=el('g',{class:'node k-'+s.kind+(selected===id?' sel':'')},gNodes);
-    const rect=el('rect',{rx:6},g);
+    const rect=el('rect',{rx:6,width:NW,height:NH},g);
     const text=el('text',{class:'nl'},g); text.textContent=s.label;
     const title=el('title',{},g); title.textContent=s.full+'\n'+s.desc+'\n（可拖动）';
     if(HAS_POINTER) g.addEventListener('pointerdown',e=>startDrag(e,id));
