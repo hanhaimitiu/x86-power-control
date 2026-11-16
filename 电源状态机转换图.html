@@ -26,29 +26,29 @@
     border:1px solid var(--line);border-radius:6px;padding:6px 14px;cursor:pointer;transition:.15s;}
   .toolbar button:hover{border-color:var(--accent);color:var(--accent-deep);}
   .toolbar button.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .toolbar button.reset{margin-left:auto;color:var(--ink3);}
   .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--ink2);margin-bottom:8px;}
   .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
   .graph-wrap{background:var(--paper);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
-  svg{display:block;width:100%;height:auto;}
-  /* edges */
+  svg{display:block;width:100%;height:auto;user-select:none;}
   .edge path{fill:none;stroke:#9aabad;stroke-width:1.5;transition:stroke .15s,stroke-width .15s,opacity .15s;}
   .edge.hl path{stroke:var(--accent-deep);stroke-width:2.8;}
-  .edge.dim{opacity:.12;}
-  .edge text{font-size:10px;fill:var(--ink2);paint-order:stroke;stroke:var(--paper);stroke-width:3px;}
+  .edge.dim{opacity:.1;}
+  .edge text{font-size:10px;fill:var(--ink2);paint-order:stroke;stroke:var(--paper);stroke-width:3px;
+    stroke-linejoin:round;cursor:default;}
   .edge.hl text{fill:var(--accent-deep);font-weight:700;}
-  /* nodes */
-  .node{cursor:pointer;}
-  .node rect{stroke-width:1.6;transition:.15s;}
+  .node{cursor:grab;}
+  .node rect{stroke-width:1.6;transition:stroke .15s,stroke-width .15s;}
   .node:hover rect,.node.sel rect{stroke:var(--accent-deep);stroke-width:2.6;}
   .node.dim{opacity:.28;}
-  .node .nl{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle;}
-  /* state colors (single hue family) */
+  .node .nl{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none;}
+  svg.dragging .node{cursor:grabbing;}
+  svg.dragging .edge{pointer-events:none;}
   .k-on rect{fill:var(--accent);stroke:var(--accent-deep);}      .k-on .nl{fill:#fff;}
   .k-off rect{fill:var(--warm);stroke:var(--warm-line);}         .k-off .nl{fill:var(--ink);}
   .k-wait rect{fill:#eef3f4;stroke:#6a949c;}                     .k-wait .nl{fill:var(--ink);}
   .k-transition rect{fill:#f3f6f6;stroke:var(--accent);stroke-dasharray:5 3;} .k-transition .nl{fill:var(--ink);}
   .k-special rect{fill:#f7f3ea;stroke:var(--warm-line);}         .k-special .nl{fill:var(--ink);}
-  /* detail panel */
   .detail{margin-top:22px;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px 20px;min-height:120px;}
   .detail h2{margin:0 0 4px;font-size:17px;}
   .detail .desc{color:var(--ink2);margin:0 0 14px;}
@@ -59,7 +59,7 @@
   .detail .to{font-weight:600;color:var(--ink);white-space:nowrap;}
   .detail .ln{font-family:Consolas,Monaco,monospace;color:var(--ink3);white-space:nowrap;font-size:12px;}
   .detail .cond{color:#a86a4c;font-size:12px;}
-  .hint{color:var(--ink3);font-size:12px;margin-top:10px;}
+  .detail tr.selrow{background:#f0f5f6;}
   .foot{margin-top:20px;color:var(--ink3);font-size:12px;}
 </style>
 </head>
@@ -67,13 +67,14 @@
 <div class="wrap">
   <header>
     <h1>x86-power-control 电源状态机转换图</h1>
-    <p class="sub">从 <code>src/power_control.cpp</code> 真实代码提取：10 个 PowerState、全部转换事件（带源码行号）。</p>
+    <p class="sub">从 <code>src/power_control.cpp</code> 真实代码提取：10 个 PowerState、43 条转换事件（带源码行号）。</p>
   </header>
 
   <div class="lead">
     先记住开机那条主线：<b>Off →（开机请求/按电源键）→ Wait for Power OK → Wait for SIO Power Good → On</b>。
-    其它状态都是"关机 / 电源循环 / 复位"这几类业务的变体。下面这张图把代码里所有转换都画了出来——
-    <b>点任意状态</b>，下方会列出它的全部转换和业务说明；也可用上方按钮只看某类业务。
+    图上每条线都标了触发它的<b>事件</b>（如 <code>POWER_OK↑</code>、<code>电源键</code>、<code>软关超时</code>），
+    <code>↑</code>=信号拉高、<code>↓</code>=拉低。<b>节点可以拖动</b>——线太挤就自己把状态拖开；
+    <b>点任一状态或任一事件标签</b>，下方列出它的源码行号和业务说明。可按上方按钮只看某类业务。
   </div>
 
   <div class="toolbar" id="toolbar"></div>
@@ -86,30 +87,28 @@
   </div>
 
   <div class="graph-wrap"><svg id="graph" viewBox="0 0 1080 780"></svg></div>
-
   <div class="detail" id="detail"></div>
 
-  <p class="foot">数据来源：<code>power_control.cpp</code> 的枚举定义（249、305 行）与各 <code>powerStateXxx()</code> handler（1629–1957 行）。
-    "<code>sioEnabled</code>" 是编译/平台开关，决定电源好之后是否还要等 SIO_POWER_GOOD。</p>
+  <p class="foot">数据来源：<code>power_control.cpp</code> 枚举定义（249、305 行）与各 <code>powerStateXxx()</code> handler（1629–1957 行）。
+    "<code>sioEnabled</code>" 是平台/编译开关，决定电源好之后是否还要等 SIO_POWER_GOOD。</p>
 </div>
 
 <script>
-// ---------- 状态定义（坐标 = 画布中心点）----------
-const STATES = {
-  on:                        {label:'On',              full:'On（正常运行）',        desc:'主机已上电、OS 正常运行。所有开机流程的终点，也是关机/循环/复位的起点。', x:660, y:330, kind:'on'},
-  waitForPowerOK:            {label:'Wait Power OK',   full:'Wait for Power OK',     desc:'已发出上电动作，正在等 POWER_OK（电源好）信号。', x:410, y:660, kind:'wait'},
-  waitForSIOPowerGood:       {label:'Wait SIO Good',   full:'Wait for SIO Power Good',desc:'POWER_OK 已到，继续等 SuperIO 报告的电源好信号。', x:410, y:470, kind:'wait'},
-  off:                       {label:'Off',             full:'Off（软关机）',         desc:'主机断电（S5），但 BMC 仍带电，随时能响应开机。', x:160, y:660, kind:'off'},
-  transitionToOff:           {label:'To Off',          full:'Transition to Off',     desc:'正在硬断电，等 POWER_OK 掉下去以确认断电完成。', x:660, y:575, kind:'transition'},
-  gracefulTransitionToOff:   {label:'Graceful To Off', full:'Graceful Transition to Off',desc:'正在软关机，等 OS 自己关；超过宽限时间会升级为硬断电。', x:910, y:500, kind:'transition'},
-  cycleOff:                  {label:'Cycle Off',       full:'Power Cycle Off',        desc:'电源循环中间的断电驻留，等定时器到点再自动上电。', x:910, y:140, kind:'special'},
-  transitionToCycleOff:      {label:'To Cycle Off',    full:'Transition to Cycle Off',desc:'硬断电中，目标是随后做一次电源循环。', x:910, y:330, kind:'transition'},
-  gracefulTransitionToCycleOff:{label:'Graceful To Cycle',full:'Graceful Transition to Cycle Off',desc:'软关中，目标是随后做一次电源循环。', x:660, y:140, kind:'transition'},
-  checkForWarmReset:         {label:'Check Warm Reset',full:'Check for Warm Reset',  desc:'复位后开一个小窗口，判定这次是热复位还是冷启动。', x:410, y:180, kind:'special'},
+const INIT = {
+  on:                          {label:'On',                full:'On（正常运行）',          desc:'主机已上电、OS 正常运行。所有开机流程的终点，也是关机/循环/复位的起点。', x:660, y:330, kind:'on'},
+  waitForPowerOK:              {label:'Wait Power OK',     full:'Wait for Power OK',       desc:'已发出上电动作，正在等 POWER_OK（电源好）信号。', x:410, y:660, kind:'wait'},
+  waitForSIOPowerGood:         {label:'Wait SIO Good',     full:'Wait for SIO Power Good', desc:'POWER_OK 已到，继续等 SuperIO 报告的电源好信号。', x:410, y:470, kind:'wait'},
+  off:                         {label:'Off',               full:'Off（软关机）',           desc:'主机断电（S5），但 BMC 仍带电，随时能响应开机。', x:160, y:660, kind:'off'},
+  transitionToOff:             {label:'To Off',            full:'Transition to Off',       desc:'正在硬断电，等 POWER_OK 掉下去以确认断电完成。', x:660, y:575, kind:'transition'},
+  gracefulTransitionToOff:     {label:'Graceful To Off',   full:'Graceful Transition to Off',desc:'正在软关机，等 OS 自己关；超过宽限时间会升级为硬断电。', x:965, y:520, kind:'transition'},
+  cycleOff:                    {label:'Cycle Off',         full:'Power Cycle Off',         desc:'电源循环中间的断电驻留，等定时器到点再自动上电。', x:960, y:130, kind:'special'},
+  transitionToCycleOff:        {label:'To Cycle Off',      full:'Transition to Cycle Off', desc:'硬断电中，目标是随后做一次电源循环。', x:960, y:330, kind:'transition'},
+  gracefulTransitionToCycleOff:{label:'Graceful To Cycle', full:'Graceful Transition to Cycle Off',desc:'软关中，目标是随后做一次电源循环。', x:660, y:130, kind:'transition'},
+  checkForWarmReset:           {label:'Check Warm Reset',  full:'Check for Warm Reset',    desc:'复位后开一个小窗口，判定这次是热复位还是冷启动。', x:350, y:165, kind:'special'},
 };
-const NW = 168, NH = 48; // 节点宽高
+const STATES = JSON.parse(JSON.stringify(INIT));
+const NW = 172, NH = 48, VB_W = 1080, VB_H = 780;
 
-// ---------- 转换事件显示名 ----------
 const EV = {
   powerOKAssert:'POWER_OK↑', powerOKDeAssert:'POWER_OK↓',
   sioPowerGoodAssert:'SIO_GOOD↑', sioPowerGoodDeAssert:'SIO_GOOD↓',
@@ -123,9 +122,7 @@ const EV = {
   gracefulPowerOffRequest:'软关请求', gracefulPowerCycleRequest:'软cycle请求'
 };
 
-// ---------- 全部转换（f=源, e=事件, t=目标, ln=源码行, g=业务分组, note=说明）----------
 const T = [
-  // powerStateOn (1629)
   {f:'on',e:'powerOKDeAssert',t:'off',ln:1635,g:['poweroff'],note:'DC 电源意外丢失，同时蜂鸣器报警。'},
   {f:'on',e:'sioS5Assert',t:'transitionToOff',ln:1640,g:['poweroff','reset'],note:'主机报告进入 S5，按 soft reset 记原因。'},
   {f:'on',e:'pltRstAssert',t:'checkForWarmReset',ln:1655,g:['reset'],note:'平台复位信号 → 进入热复位判定（USE_PLT_RST 开启时）。'},
@@ -137,196 +134,229 @@ const T = [
   {f:'on',e:'gracefulPowerCycleRequest',t:'gracefulTransitionToCycleOff',ln:1684,g:['cycle'],note:'软循环请求 → 先软关再上电。'},
   {f:'on',e:'resetButtonPressed',t:'checkForWarmReset',ln:1689,g:['reset'],note:'复位键 → 进入热复位判定窗口。'},
   {f:'on',e:'resetRequest',t:'on',ln:1693,g:['reset'],self:true,note:'复位请求：只拉 RESET_OUT，状态先不变；靠随后的 PLT_RST/POST 信号转到 Check Warm Reset。'},
-  // powerStateWaitForPowerOK (1701)
   {f:'waitForPowerOK',e:'powerOKAssert',t:'waitForSIOPowerGood',ln:1714,g:['powerup'],cond:'sioEnabled=true',note:'POWER_OK 到了且启用 SIO → 继续等 SIO_POWER_GOOD。'},
   {f:'waitForPowerOK',e:'powerOKAssert',t:'on',ln:1718,g:['powerup'],cond:'sioEnabled=false',note:'POWER_OK 到了且不启用 SIO → 直接 On。'},
   {f:'waitForPowerOK',e:'powerOKWatchdogTimerExpired',t:'off',ln:1723,g:['powerup'],note:'等 POWER_OK 超时 → 回 Off，报 powerOK 失败。'},
   {f:'waitForPowerOK',e:'sioPowerGoodAssert',t:'on',ln:1728,g:['powerup'],note:'SIO_POWER_GOOD 先到 → 直接 On。'},
-  // powerStateWaitForSIOPowerGood (1736)
   {f:'waitForSIOPowerGood',e:'sioPowerGoodAssert',t:'on',ln:1743,g:['powerup'],note:'SIO_POWER_GOOD 到了 → On。'},
   {f:'waitForSIOPowerGood',e:'sioPowerGoodWatchdogTimerExpired',t:'off',ln:1746,g:['powerup'],note:'等 SIO_POWER_GOOD 超时 → Off，报 system power good 失败。'},
-  // powerStateOff (1755)
   {f:'off',e:'powerOKAssert',t:'waitForSIOPowerGood',ln:1765,g:['powerup'],cond:'sioEnabled=true',note:'电源好 → 等 SIO（启用 SIO 时）。'},
   {f:'off',e:'powerOKAssert',t:'on',ln:1769,g:['powerup'],cond:'sioEnabled=false',note:'电源好 → 直接 On（不启用 SIO）。'},
   {f:'off',e:'sioS5DeAssert',t:'waitForPowerOK',ln:1775,g:['powerup'],note:'S5 撤销 → 主机开始上电，等 POWER_OK。'},
   {f:'off',e:'sioPowerGoodAssert',t:'on',ln:1778,g:['powerup'],note:'SIO_POWER_GOOD 到了 → On。'},
   {f:'off',e:'powerButtonPressed',t:'waitForPowerOK',ln:1782,g:['powerup'],note:'按电源键 → 等 POWER_OK。'},
   {f:'off',e:'powerOnRequest',t:'waitForPowerOK',ln:1786,g:['powerup'],note:'开机请求 → 拉 POWER_OUT 上电，等 POWER_OK。'},
-  // powerStateTransitionToOff (1795)
   {f:'transitionToOff',e:'powerOKDeAssert',t:'off',ln:1803,g:['poweroff'],note:'POWER_OK 掉下去 → 确认断电完成，回 Off。'},
-  // powerStateGracefulTransitionToOff (1811)
   {f:'gracefulTransitionToOff',e:'powerOKDeAssert',t:'off',ln:1818,g:['poweroff'],note:'OS 自己关掉了、电源掉 → Off。'},
   {f:'gracefulTransitionToOff',e:'gracefulPowerOffTimerExpired',t:'on',ln:1821,g:['poweroff'],note:'软关超时 OS 还没关 → 放弃，回 On。'},
   {f:'gracefulTransitionToOff',e:'powerOffRequest',t:'transitionToOff',ln:1825,g:['poweroff'],note:'期间收到硬关 → 升级为强制断电。'},
   {f:'gracefulTransitionToOff',e:'powerCycleRequest',t:'transitionToCycleOff',ln:1830,g:['cycle'],note:'期间收到 cycle → 转去电源循环流程。'},
   {f:'gracefulTransitionToOff',e:'resetRequest',t:'on',ln:1835,g:['reset','poweroff'],note:'期间收到复位 → 取消软关，回 On 并复位。'},
-  // powerStateCycleOff (1844)
   {f:'cycleOff',e:'powerOKAssert',t:'waitForSIOPowerGood',ln:1855,g:['cycle'],cond:'sioEnabled=true',note:'电源好 → 等 SIO（启用 SIO）。'},
   {f:'cycleOff',e:'powerOKAssert',t:'on',ln:1859,g:['cycle'],cond:'sioEnabled=false',note:'电源好 → 直接 On（不启用 SIO）。'},
   {f:'cycleOff',e:'sioS5DeAssert',t:'waitForPowerOK',ln:1866,g:['cycle'],note:'S5 撤销 → 等 POWER_OK。'},
   {f:'cycleOff',e:'powerButtonPressed',t:'waitForPowerOK',ln:1871,g:['cycle'],note:'按电源键 → 提前上电。'},
   {f:'cycleOff',e:'powerCycleTimerExpired',t:'waitForPowerOK',ln:1876,g:['cycle'],note:'断电驻留时间到 → 自动 powerOn，等 POWER_OK。'},
-  // powerStateTransitionToCycleOff (1884)
   {f:'transitionToCycleOff',e:'powerOKDeAssert',t:'cycleOff',ln:1893,g:['cycle'],note:'电源掉 → 进入 Cycle Off，并启动 cycle 定时器。'},
-  // powerStateGracefulTransitionToCycleOff (1901)
   {f:'gracefulTransitionToCycleOff',e:'powerOKDeAssert',t:'cycleOff',ln:1908,g:['cycle'],note:'OS 关掉 → 进入 Cycle Off。'},
   {f:'gracefulTransitionToCycleOff',e:'gracefulPowerOffTimerExpired',t:'on',ln:1912,g:['cycle'],note:'软关超时 → 放弃 cycle，回 On。'},
   {f:'gracefulTransitionToCycleOff',e:'powerOffRequest',t:'transitionToOff',ln:1916,g:['cycle','poweroff'],note:'期间收到硬关 → 转为纯断电。'},
   {f:'gracefulTransitionToCycleOff',e:'powerCycleRequest',t:'transitionToCycleOff',ln:1921,g:['cycle'],note:'期间收到 cycle → 转硬 cycle。'},
   {f:'gracefulTransitionToCycleOff',e:'resetRequest',t:'on',ln:1927,g:['cycle','reset'],note:'期间收到复位 → 取消，回 On。'},
-  // powerStateCheckForWarmReset (1935)
   {f:'checkForWarmReset',e:'sioS5Assert',t:'transitionToOff',ln:1942,g:['reset'],note:'判定期间主机进了 S5 → 是冷关机，走断电。'},
   {f:'checkForWarmReset',e:'warmResetDetected',t:'on',ln:1945,g:['reset'],note:'判定为热复位 → 回 On。'},
   {f:'checkForWarmReset',e:'powerOKDeAssert',t:'off',ln:1949,g:['reset','poweroff'],note:'电源掉 → 意外断电，回 Off 并报警。'},
 ];
 
 const GROUPS = [
-  {id:'all',      name:'全部'},
-  {id:'powerup',  name:'上电流程'},
-  {id:'poweroff', name:'断电流程'},
-  {id:'cycle',    name:'电源循环'},
-  {id:'reset',    name:'复位流程'},
+  {id:'all',name:'全部'}, {id:'powerup',name:'上电流程'}, {id:'poweroff',name:'断电流程'},
+  {id:'cycle',name:'电源循环'}, {id:'reset',name:'复位流程'},
 ];
 
 const svg = document.getElementById('graph');
 const NS = 'http://www.w3.org/2000/svg';
-let currentGroup = 'all';
-let selected = null;
-const el = (tag, attrs, parent) => {
-  const n = document.createElementNS(NS, tag);
-  for (const k in attrs) n.setAttribute(k, attrs[k]);
-  if (parent) parent.appendChild(n);
-  return n;
-};
+const el = (tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n;};
+let currentGroup='all', selected=null, selectedEdge=null;
+let nodeEls={}, edgeEls=[];
+let dragging=null, dragOff={x:0,y:0}, moved=false, downPt={x:0,y:0};
+
 function hashCurve(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return ((h%7)-3)*15;}
-function rectPoint(s, toward){
+function rectPoint(s,toward){
   const dx=toward.x-s.x, dy=toward.y-s.y;
-  if(Math.abs(dx)<1e-6 && Math.abs(dy)<1e-6) return {x:s.x,y:s.y};
-  const tx=(NW/2+4)/Math.abs(dx||1e-6), ty=(NH/2+4)/Math.abs(dy||1e-6);
-  const t=Math.min(tx,ty);
-  return {x:s.x+dx*t, y:s.y+dy*t};
+  if(Math.abs(dx)<1e-6&&Math.abs(dy)<1e-6)return {x:s.x,y:s.y};
+  const tx=(NW/2+4)/Math.abs(dx||1e-6), ty=(NH/2+4)/Math.abs(dy||1e-6), t=Math.min(tx,ty);
+  return {x:s.x+dx*t,y:s.y+dy*t};
 }
-
-function visibleData(){
-  if(currentGroup==='all') return {states:STATES, edges:T};
-  const edges=T.filter(t=>t.g.includes(currentGroup));
-  const ids=new Set(); edges.forEach(t=>{ids.add(t.f);ids.add(t.t);});
-  const states={}; for(const id in STATES) if(ids.has(id)) states[id]=STATES[id];
-  return {states, edges};
-}
-
-function renderDetail(id){
-  const d=document.getElementById('detail');
-  if(!id){
-    d.innerHTML='<h2>状态详情</h2><p class="desc">点击图中任意状态，这里列出它的全部转换（事件 → 目标状态、源码行号、业务说明）。</p>';
-    return;
+function edgeGeom(t){
+  const s=STATES[t.f], e=STATES[t.t];
+  if(t.self){
+    return {d:'M '+(s.x-28)+' '+(s.y-NH/2)+' C '+(s.x-72)+' '+(s.y-96)+', '+(s.x+72)+' '+(s.y-96)+', '+(s.x+28)+' '+(s.y-NH/2), lx:s.x, ly:s.y-94};
   }
+  const len=Math.hypot(e.x-s.x,e.y-s.y)||1;
+  const curve=hashCurve(t.f+'>'+t.t+t.e)*Math.min(1,len/240);
+  const p1=rectPoint(s,e), p2=rectPoint(e,s);
+  const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+  const nx=-(p2.y-p1.y)/len, ny=(p2.x-p1.x)/len;
+  const cx=mx+nx*curve, cy=my+ny*curve;
+  return {d:'M '+p1.x+' '+p1.y+' Q '+cx+' '+cy+' '+p2.x+' '+p2.y, lx:(p1.x+2*cx+p2.x)/4, ly:(p1.y+2*cy+p2.y)/4};
+}
+function updatePositions(){
+  for(const id in nodeEls){
+    const s=STATES[id], n=nodeEls[id];
+    n.rect.setAttribute('x',s.x-NW/2); n.rect.setAttribute('y',s.y-NH/2);
+    n.text.setAttribute('x',s.x);     n.text.setAttribute('y',s.y);
+  }
+  for(const it of edgeEls){
+    const g=edgeGeom(it.t);
+    it.path.setAttribute('d',g.d);
+    if(it.text){it.text.setAttribute('x',g.lx);it.text.setAttribute('y',g.ly);}
+  }
+}
+function visibleEdges(){return currentGroup==='all'?T:T.filter(t=>t.g.includes(currentGroup));}
+function visibleStateIds(){
+  if(currentGroup==='all')return Object.keys(STATES);
+  const ids=new Set();T.filter(t=>t.g.includes(currentGroup)).forEach(t=>{ids.add(t.f);ids.add(t.t);});return [...ids];
+}
+function detailForState(id){
   const s=STATES[id];
   const out=T.filter(t=>t.f===id), inn=T.filter(t=>t.t===id);
   const rows=(arr,dir)=>arr.map(t=>{
-    const target = dir==='out' ? STATES[t.t].full : STATES[t.f].full;
-    const peer   = dir==='out' ? t.t : t.f;
-    return '<tr>'+
+    const target=dir==='out'?STATES[t.t].full:STATES[t.f].full;
+    return '<tr'+(selectedEdge===t?' class="selrow"':'')+'>'+
       '<td class="ev">'+(EV[t.e]||t.e)+'</td>'+
       '<td>'+(dir==='out'?'→':'←')+' <span class="to">'+target+'</span>'+(t.cond?' <span class="cond">['+t.cond+']</span>':'')+'</td>'+
-      '<td class="ln">:'+t.ln+'</td>'+
-      '<td>'+t.note+'</td></tr>';
+      '<td class="ln">:'+t.ln+'</td><td>'+t.note+'</td></tr>';
   }).join('');
-  d.innerHTML='<h2>'+s.full+'</h2><p class="desc">'+s.desc+'</p>'+
+  return '<h2>'+s.full+'</h2><p class="desc">'+s.desc+'</p>'+
     '<table><thead><tr><th>事件</th><th>转换</th><th>代码行</th><th>业务说明</th></tr></thead><tbody>'+
     (out.length?'<tr><td colspan="4" style="color:#8a8378;font-size:12px">■ 出边（本状态下收到事件后）</td></tr>'+rows(out,'out'):'')+
     (inn.length?'<tr><td colspan="4" style="color:#8a8378;font-size:12px">■ 入边（从哪些状态转进来）</td></tr>'+rows(inn,'in'):'')+
     '</tbody></table>';
 }
-
+function detailForEdge(t){
+  return '<h2>转换：'+STATES[t.f].full+' → '+STATES[t.t].full+'</h2>'+
+    '<p class="desc">触发事件 <span class="ev">'+(EV[t.e]||t.e)+'</span>　源码行 <span class="ln">power_control.cpp:'+t.ln+'</span>'+(t.cond?'　<span class="cond">条件：'+t.cond+'</span>':'')+'</p>'+
+    '<table><thead><tr><th>源状态</th><th>事件</th><th>目标状态</th><th>源码行</th><th>业务说明</th></tr></thead><tbody>'+
+    '<tr class="selrow"><td>'+STATES[t.f].full+'</td><td class="ev">'+(EV[t.e]||t.e)+'</td><td class="to">'+STATES[t.t].full+'</td><td class="ln">:'+t.ln+'</td><td>'+t.note+'</td></tr>'+
+    '</tbody></table>';
+}
+function renderDetail(){
+  const d=document.getElementById('detail');
+  if(selectedEdge){d.innerHTML=detailForEdge(selectedEdge);return;}
+  if(selected){d.innerHTML=detailForState(selected);return;}
+  d.innerHTML='<h2>状态详情</h2><p class="desc">点图中任意<b>状态</b>看它的全部转换；点任意<b>事件标签</b>看那一条转换的源码行号和业务说明。节点可直接拖动来理清重叠的线。</p>';
+}
 function render(){
-  svg.innerHTML='';
+  svg.innerHTML=''; nodeEls={}; edgeEls=[];
   const defs=el('defs',{},svg);
-  const mk=el('marker',{id:'arw',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'6',markerHeight:'6',orient:'auto-start-reverse'},defs);
-  el('path',{d:'M 0 1 L 9 5 L 0 9 z',fill:'#9aabad'},mk);
-  const mkH=el('marker',{id:'arwH',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'},defs);
-  el('path',{d:'M 0 1 L 9 5 L 0 9 z',fill:'#2c525c'},mkH);
-
-  const {states,edges}=visibleData();
+  [['arw','#9aabad'],['arwH','#2c525c']].forEach(([id,fill])=>{
+    const mk=el('marker',{id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'6',markerHeight:'6',orient:'auto-start-reverse'},defs);
+    el('path',{d:'M 0 1 L 9 5 L 0 9 z',fill},mk);
+  });
   const gEdges=el('g',{},svg), gNodes=el('g',{},svg);
-  const edgeEls=[];
-
-  edges.forEach(t=>{
-    const s=STATES[t.f], e=STATES[t.t];
+  visibleEdges().forEach(t=>{
     const g=el('g',{class:'edge'},gEdges);
-    let path, lx, ly;
-    if(t.self){
-      path='M '+(s.x-28)+' '+(s.y-NH/2)+' C '+(s.x-70)+' '+(s.y-96)+', '+(s.x+70)+' '+(s.y-96)+', '+(s.x+28)+' '+(s.y-NH/2);
-      lx=s.x; ly=s.y-92;
-    }else{
-      const len=Math.hypot(e.x-s.x,e.y-s.y)||1;
-      const curve=hashCurve(t.f+'>'+t.t+t.e)*Math.min(1,len/240);
-      const p1=rectPoint(s,e), p2=rectPoint(e,s);
-      const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
-      const nx=-(p2.y-p1.y)/len, ny=(p2.x-p1.x)/len;
-      const cx=mx+nx*curve, cy=my+ny*curve;
-      path='M '+p1.x+' '+p1.y+' Q '+cx+' '+cy+' '+p2.x+' '+p2.y;
-      lx=(p1.x+2*cx+p2.x)/4; ly=(p1.y+2*cy+p2.y)/4;
-    }
-    const p=el('path',{d:path,'marker-end':'url(#arw)'},g);
-    if(currentGroup!=='all'){
-      const lab=el('text',{x:lx,y:ly,'text-anchor':'middle'},g);
-      lab.textContent=EV[t.e]||t.e;
-    }
+    const path=el('path',{'marker-end':'url(#arw)'},g);
+    const text=el('text',{'text-anchor':'middle'},g);
+    text.textContent=EV[t.e]||t.e;
     const title=el('title',{},g);
-    title.textContent=(EV[t.e]||t.e)+' → '+e.full+'  (power_control.cpp:'+t.ln+')\n'+t.note+(t.cond?'\n条件：'+t.cond:'');
+    title.textContent=(EV[t.e]||t.e)+' → '+STATES[t.t].full+'  (power_control.cpp:'+t.ln+')\n'+t.note+(t.cond?'\n条件：'+t.cond:'');
     g.addEventListener('mouseenter',()=>{
-      p.setAttribute('marker-end','url(#arwH)');
-      g.classList.add('hl');
-      if(selected && selected!==t.f && selected!==t.t){
-        edgeEls.forEach(x=>{if(!x.g.classList.contains('hl'))x.g.classList.add('dim');});
-      }
+      if(dragging)return;
+      path.setAttribute('marker-end','url(#arwH)');g.classList.add('hl');
+      if(selected||selectedEdge)edgeEls.forEach(x=>{if(x.g!==g)x.g.classList.add('dim');});
     });
     g.addEventListener('mouseleave',()=>{
-      p.setAttribute('marker-end','url(#arw)');
-      g.classList.remove('hl');
+      path.setAttribute('marker-end','url(#arw)');g.classList.remove('hl');
       edgeEls.forEach(x=>x.g.classList.remove('dim'));
     });
-    edgeEls.push({g,t});
+    g.addEventListener('click',e=>{
+      e.stopPropagation();
+      if(moved)return;
+      selectedEdge=t;selected=null;render();renderDetail();
+    });
+    edgeEls.push({g,path,text,t});
   });
-
-  for(const id in states){
-    const s=states[id];
+  visibleStateIds().forEach(id=>{
+    const s=STATES[id];
     const g=el('g',{class:'node k-'+s.kind+(selected===id?' sel':'')},gNodes);
-    el('rect',{x:s.x-NW/2,y:s.y-NH/2,width:NW,height:NH,rx:6},g);
-    const t=el('text',{class:'nl',x:s.x,y:s.y},g);
-    t.textContent=s.label;
-    const title=el('title',{},g);
-    title.textContent=s.full+'\n'+s.desc;
-    g.addEventListener('click',()=>{selected=(selected===id?null:id);render();renderDetail(selected);});
+    const rect=el('rect',{rx:6},g);
+    const text=el('text',{class:'nl'},g); text.textContent=s.label;
+    const title=el('title',{},g); title.textContent=s.full+'\n'+s.desc+'\n（可拖动）';
+    g.addEventListener('mousedown',e=>startDrag(e,id));
+    g.addEventListener('touchstart',e=>startDrag(e,id),{passive:false});
+    g.addEventListener('click',e=>{
+      e.stopPropagation();
+      if(moved)return;
+      selectedEdge=null;selected=(selected===id?null:id);render();renderDetail();
+    });
     g.addEventListener('mouseenter',()=>{
+      if(dragging)return;
       edgeEls.forEach(x=>{
-        if(x.t.f===id||x.t.t===id){x.g.classList.add('hl');x.g.firstChild.setAttribute('marker-end','url(#arwH)');}
+        if(x.t.f===id||x.t.t===id){x.g.classList.add('hl');x.path.setAttribute('marker-end','url(#arwH)');}
         else if(currentGroup!=='all'){x.g.classList.add('dim');}
       });
     });
     g.addEventListener('mouseleave',()=>{
-      edgeEls.forEach(x=>{x.g.classList.remove('hl','dim');x.g.firstChild.setAttribute('marker-end','url(#arw)');});
+      if(dragging)return;
+      edgeEls.forEach(x=>{x.g.classList.remove('hl','dim');x.path.setAttribute('marker-end','url(#arw)');});
     });
-  }
+    nodeEls[id]={g,rect,text};
+  });
+  updatePositions();
 }
+function clientToSvg(e){
+  const r=svg.getBoundingClientRect();
+  const cx=e.touches?e.touches[0].clientX:e.clientX, cy=e.touches?e.touches[0].clientY:e.clientY;
+  return {x:(cx-r.left)/r.width*VB_W, y:(cy-r.top)/r.height*VB_H};
+}
+function startDrag(e,id){
+  if(e.button!==undefined&&e.button!==0)return;
+  const pt=clientToSvg(e);
+  dragging=id; moved=false;
+  dragOff.x=pt.x-STATES[id].x; dragOff.y=pt.y-STATES[id].y;
+  downPt=pt;
+  svg.classList.add('dragging');
+  e.preventDefault();
+}
+function onMove(e){
+  if(!dragging)return;
+  const pt=clientToSvg(e);
+  const nx=Math.max(NW/2,Math.min(VB_W-NW/2,pt.x-dragOff.x));
+  const ny=Math.max(NH/2+6,Math.min(VB_H-NH/2,pt.y-dragOff.y));
+  if(Math.hypot(pt.x-downPt.x,pt.y-downPt.y)>3)moved=true;
+  STATES[dragging].x=nx; STATES[dragging].y=ny;
+  updatePositions();
+  e.preventDefault();
+}
+function endDrag(){dragging=null;svg.classList.remove('dragging');}
+svg.addEventListener('mousemove',onMove);
+svg.addEventListener('touchmove',onMove,{passive:false});
+window.addEventListener('mouseup',endDrag);
+window.addEventListener('touchend',endDrag);
+svg.addEventListener('click',()=>{if(!moved){selectedEdge=null;selected=null;render();renderDetail();}});
 
-// toolbar
 const tb=document.getElementById('toolbar');
 GROUPS.forEach(gp=>{
   const b=document.createElement('button');
-  b.textContent=gp.name; b.dataset.g=gp.id;
-  if(gp.id==='all') b.classList.add('active');
+  b.textContent=gp.name;b.dataset.g=gp.id;
+  if(gp.id==='all')b.classList.add('active');
   b.addEventListener('click',()=>{
-    currentGroup=gp.id; selected=null;
-    [...tb.children].forEach(x=>x.classList.toggle('active',x===b));
-    render(); renderDetail(null);
+    currentGroup=gp.id;selected=null;selectedEdge=null;
+    [...tb.children].forEach(x=>x.classList.toggle('active',x.dataset.g===gp.id));
+    render();renderDetail();
   });
   tb.appendChild(b);
 });
+const rb=document.createElement('button');
+rb.className='reset';rb.textContent='重置位置';
+rb.addEventListener('click',()=>{
+  for(const id in INIT){STATES[id].x=INIT[id].x;STATES[id].y=INIT[id].y;}
+  updatePositions();
+});
+tb.appendChild(rb);
 
-render();
-renderDetail(null);
+render();renderDetail();
 </script>
 </body>
 </html>
