@@ -45,6 +45,15 @@ struct ConfigData
  * @param eventConfigMap - values populated from the "event_configs" section
  * @return 0 on success, -1 on failure
  */
+/* @brief 加载并解析 power-control 的 JSON 配置文件。
+ * 打开 @p configFile，解析其 JSON 内容，并填充信号、定时器
+ * 以及事件设置。路径由调用方提供，因此文件定位策略
+ * 由调用方决定，测试可以指向自己的文件。
+ * @param configFile - JSON 配置文件的路径
+ * @param powerSignalMap - 信号名称到待填充 ConfigData 的映射
+ * @param timerMap - 从 "timing_configs" 段填充的定时器值
+ * @param eventConfigMap - 从 "event_configs" 段填充的值
+ * @return 成功返回 0，失败返回 -1 */
 int loadConfigValues(
     const std::filesystem::path& configFile,
     const boost::container::flat_map<std::string, ConfigData*>& powerSignalMap,

@@ -24,6 +24,7 @@ enum class DbusConfigType
 };
 
 // Mandatory config parameters for dbus inputs
+// dbus 输入的必需配置参数
 const boost::container::flat_map<DbusConfigType, std::string> dbusParams = {
     {DbusConfigType::name, "DbusName"},
     {DbusConfigType::path, "Path"},
@@ -83,6 +84,8 @@ bool parseDBUSConfig(ConfigData& configData, const nlohmann::json& gpioConfig,
 {
     // if dbus based gpio config is defined read and update the dbus
     // params corresponding to the gpio config instance
+    // 如果定义了基于 dbus 的 gpio 配置，则读取并更新
+    // 与该 gpio 配置实例对应的 dbus 参数
     for (auto& [key, dbusParamName] : dbusParams)
     {
         auto it = gpioConfig.find(dbusParamName);
@@ -118,9 +121,11 @@ bool parseDBUSConfig(ConfigData& configData, const nlohmann::json& gpioConfig,
     }
 
     // dbus-based inputs must be active-high.
+    // 基于 dbus 的输入必须为高电平有效（active-high）。
     configData.polarity = true;
 
     // MatchRegex is optional
+    // MatchRegex 是可选的
     auto item = gpioConfig.find("MatchRegex");
     if (item != gpioConfig.end())
     {
@@ -149,6 +154,7 @@ bool parseTimerConfig(const nlohmann::json& timers,
                       boost::container::flat_map<std::string, int>& timerMap)
 {
     // read and store the timer values from json config to Timer Map
+    // 从 json 配置读取定时器值并存储到 Timer Map
     for (auto& [key, timerValue] : timerMap)
     {
         int value = timers.value(key, timerValue);
@@ -167,6 +173,7 @@ void parseEventConfig(const nlohmann::json& events,
                       boost::container::flat_map<std::string, bool>& eventMap)
 {
     // read and store the event values from json config to event config map
+    // 从 json 配置读取事件值并存储到 event config map
     for (auto& [key, value] : eventMap)
     {
         value = events.value(key, value);
@@ -188,6 +195,8 @@ bool parseGpioConfigs(
 
         // Iterate through the powersignal map to check if the gpio json config
         // entry is valid
+        // 遍历 powersignal map，检查 gpio json 配置
+        // 条目是否有效
         const std::string* namePtr = nameIt->get_ptr<const std::string*>();
         if (namePtr == nullptr)
         {
@@ -207,6 +216,9 @@ bool parseGpioConfigs(
         // assign the power signal name to the corresponding structure reference
         // from map then fillup the structure with corresponding json config
         // value
+        // 从 map 中取出对应的结构体引用，把电源信号名称
+        // 赋给该结构体，再用相应的 json 配置值
+        // 填充该结构体
         ConfigData* tempGpioData = signalMapIter->second;
         tempGpioData->name = gpioName;
 

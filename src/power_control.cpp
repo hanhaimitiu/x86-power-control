@@ -13,6 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 */
+/* // 版权所有 (c) 2018-2026 Intel Corporation
+ * //
+ * // 本文件依据 Apache License 2.0（以下简称“License”）授权；
+ * // 除非符合该 License，否则不得使用本文件。
+ * // 你可以在以下地址获取该 License 的副本：
+ * //
+ * //      http://www.apache.org/licenses/LICENSE-2.0
+ * //
+ * // 除非适用法律要求或书面同意，否则依据该 License
+ * // 分发的软件均按“原样”提供，
+ * // 不附带任何明示或暗示的担保或条件。
+ * // 有关具体权限与限制，请参阅该 License。
+ * // */
 
 #include "power_control.hpp"
 
@@ -67,6 +80,8 @@ static ConfigData hpmStbyEnConfig;
 
 // map for storing list of gpio parameters whose config are to be read from x86
 // power control json config
+// 用于存储 gpio 参数列表的 map，这些参数的配置需从 x86
+// power control 的 json 配置中读取
 boost::container::flat_map<std::string, ConfigData*> powerSignalMap = {
     {"PowerOut", &powerOutConfig},
     {"PowerOk", &powerOkConfig},
@@ -113,6 +128,7 @@ static bool ignoreNextSoftReset = false;
 #endif
 
 // This map contains all timer values that are to be read from json config
+// 该 map 包含所有需要从 json 配置读取的定时器值
 boost::container::flat_map<std::string, int> TimerMap = {
     {"PowerPulseMs", 200},
     {"ForceOffPulseMs", 15000},
@@ -128,6 +144,8 @@ boost::container::flat_map<std::string, int> TimerMap = {
 
 // This map contains all event config values that are to be read from json
 // config
+// 该 map 包含所有需要从 json 配置读取的
+// 事件配置值
 boost::container::flat_map<std::string, bool> eventConfigMap = {
     {"NMIWhenPoweredOff", true}};
 
@@ -136,30 +154,42 @@ static bool sioEnabled = true;
 
 // Timers
 // Time holding GPIOs asserted
+// 定时器
+// GPIO 保持有效电平的时长
 static boost::asio::steady_timer gpioAssertTimer(io);
 // Time between off and on during a power cycle
+// 电源循环（power cycle）过程中关机与开机之间的间隔
 static boost::asio::steady_timer powerCycleTimer(io);
 // Time OS gracefully powering off
+// 操作系统正常关机（graceful power off）的时长
 static boost::asio::steady_timer gracefulPowerOffTimer(io);
 // Time the warm reset check
+// 热复位（warm reset）检查的时长
 static boost::asio::steady_timer warmResetCheckTimer(io);
 // Time power OK assertion on power-on
+// 上电时 power OK（PWROK）信号有效化的时长
 static boost::asio::steady_timer powerOKWatchdogTimer(io);
 // Time SIO power good assertion on power-on
+// 上电时 SIO power good 信号有效化的时长
 static boost::asio::steady_timer sioPowerGoodWatchdogTimer(io);
 // Time power-off state save for power loss tracking
+// 为追踪掉电而保存关机状态的时长
 static boost::asio::steady_timer powerStateSaveTimer(io);
 // POH timer
+// POH 定时器
 static boost::asio::steady_timer pohCounterTimer(io);
 // Time when to allow restart cause updates
+// 允许更新重启原因（restart cause）的时机
 static boost::asio::steady_timer restartCauseTimer(io);
 static boost::asio::steady_timer slotPowerCycleTimer(io);
 
 // Map containing timers used for D-Bus get-property retries
+// 包含用于 D-Bus get-property 重试的定时器的 map
 static boost::container::flat_map<std::string, boost::asio::steady_timer>
     dBusRetryTimers;
 
 // GPIO Lines and Event Descriptors
+// GPIO 线路与事件描述符
 static gpiod::line powerOKLine;
 static boost::asio::posix::stream_descriptor powerOKEvent(io);
 static gpiod::line sioPowerGoodLine;
@@ -234,6 +264,8 @@ static void setOperatingSystemState(const OperatingSystemStateStage stage)
 #if IGNORE_SOFT_RESETS_DURING_POST
     // If POST complete has asserted set ignoreNextSoftReset to false to avoid
     // masking soft resets after POST
+    // 如果 POST complete 已置位，则将 ignoreNextSoftReset 设为 false，
+    // 以免屏蔽 POST 之后的软复位
     if (operatingSystemState == OperatingSystemStateStage::Standby)
     {
         ignoreNextSoftReset = false;
@@ -398,6 +430,7 @@ static void logEvent(const std::string_view stateHandler, const Event event)
 }
 
 // Power state handlers
+// 电源状态处理函数
 static void powerStateOn(const Event event);
 static void powerStateWaitForPowerOK(const Event event);
 static void powerStateWaitForSIOPowerGood(const Event event);
@@ -534,6 +567,8 @@ static void savePowerState(const PowerState state)
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("Power-state save async_wait failed: {ERROR_MSG}",
@@ -558,6 +593,7 @@ static void setPowerState(const PowerState state)
     chassisIface->set_property("LastStateChangeTime", getCurrentTimeMs());
 
     // Save the power state for the restore policy
+    // 为 restore 策略保存电源状态
     savePowerState(state);
 }
 
@@ -597,11 +633,13 @@ static std::string getRestartCause(RestartCause cause)
 static void addRestartCause(const RestartCause cause)
 {
     // Add this to the set of causes for this restart
+    // 将该原因加入本次重启的原因集合
     causeSet.insert(cause);
 }
 static void clearRestartCause()
 {
     // Clear the set for the next restart
+    // 为下一次重启清空该集合
     causeSet.clear();
 }
 static void setRestartCauseProperty(const std::string& cause)
@@ -639,6 +677,7 @@ static void resetACBootProperty()
 static void setRestartCause()
 {
     // Determine the actual restart cause based on the set of causes
+    // 根据原因集合确定实际的重启原因
     std::string restartCause =
         "xyz.openbmc_project.State.Host.RestartCause.Unknown";
     if (causeSet.contains(RestartCause::watchdog))
@@ -734,6 +773,7 @@ static void nmiDiagIntLog()
 PersistentState::PersistentState()
 {
     // create the power control directory if it doesn't exist
+    // 如果 power control 目录不存在则创建它
     std::error_code ec;
     if (!(std::filesystem::create_directories(powerControlDir, ec)))
     {
@@ -746,6 +786,7 @@ PersistentState::PersistentState()
     }
 
     // read saved state, it's ok, if the file doesn't exists
+    // 读取已保存的状态，文件不存在也没关系
     std::ifstream appStateStream(powerControlDir / stateFile);
     if (!appStateStream.is_open())
     {
@@ -882,6 +923,7 @@ void PowerRestoreController::run()
         "/xyz/openbmc_project/control/host" + node + "/power_restore_policy";
     powerRestorePolicyLog();
     // this list only needs to be created once
+    // 该列表只需创建一次
     if (matches.empty())
     {
         matches.emplace_back(
@@ -905,6 +947,7 @@ void PowerRestoreController::run()
     }
 
     // Check if it's already on DBus
+    // 检查它是否已经存在于 DBus 上
     conn->async_method_call(
         [this](boost::system::error_code ec,
                const dbusPropertiesList properties) {
@@ -919,6 +962,7 @@ void PowerRestoreController::run()
 
 #ifdef USE_ACBOOT
     // Check if it's already on DBus
+    // 检查它是否已经存在于 DBus 上
     conn->async_method_call(
         [this](boost::system::error_code ec,
                const dbusPropertiesList properties) {
@@ -991,9 +1035,12 @@ void PowerRestoreController::invokeIfReady()
     {
         // Calculate the delay from now to meet the requested delay
         // Subtract the approximate uboot time
+        // 计算从现在起还需延迟多久才能满足所请求的延迟，
+        // 减去 uboot 的大致耗时
         static constexpr const int ubootSeconds = 20;
         int delay = powerRestoreDelay - ubootSeconds;
         // Subtract the time since boot
+        // 减去自开机以来已过去的时间
         struct sysinfo info = {};
         if (sysinfo(&info) == 0)
         {
@@ -1011,6 +1058,8 @@ void PowerRestoreController::invokeIfReady()
                 {
                     // operation_aborted is expected if timer is canceled before
                     // completion.
+                    // 如果定时器在完成前被取消，出现 operation_aborted
+                    // 是预期行为。
                     if (ec == boost::asio::error::operation_aborted)
                     {
                         return;
@@ -1037,6 +1086,7 @@ void PowerRestoreController::invokeIfReady()
 void PowerRestoreController::invoke()
 {
     // we want to run Power Restore only once
+    // Power Restore 只需执行一次
     if (policyInvoked)
     {
         return;
@@ -1068,6 +1118,8 @@ void PowerRestoreController::invoke()
     }
     // We're done with the previous power state for the restore policy, so store
     // the current state
+    // restore 策略已经处理完先前的电源状态，因此保存
+    // 当前状态
     savePowerState(powerState);
 }
 
@@ -1091,6 +1143,8 @@ static void waitForGPIOEvent(
                            "GPIO_NAME", name, "ERROR_MSG", ec.message());
                 // TODO: throw here to force power-control to
                 // restart?
+                // TODO: 在这里抛异常以强制 power-control
+                // 重启？
                 return;
             }
             gpiod::line_event line_event = line.event_read();
@@ -1106,6 +1160,7 @@ static bool requestGPIOEvents(
     boost::asio::posix::stream_descriptor& gpioEventDescriptor)
 {
     // Find the GPIO line
+    // 查找 GPIO 线路
     gpioLine = gpiod::find_line(name);
     if (!gpioLine)
     {
@@ -1141,6 +1196,7 @@ static bool setGPIOOutput(const std::string& name, bool value,
                           gpiod::line& gpioLine)
 {
     // Find the GPIO line
+    // 查找 GPIO 线路
     gpioLine = gpiod::find_line(name);
     if (!gpioLine)
     {
@@ -1149,6 +1205,7 @@ static bool setGPIOOutput(const std::string& name, bool value,
     }
 
     // Request GPIO output to specified value
+    // 申请将 GPIO 输出设置为指定值
     try
     {
         gpioLine.request({appName, gpiod::line_request::DIRECTION_OUTPUT, {}},
@@ -1171,6 +1228,7 @@ static int setMaskedGPIOOutputForMs(gpiod::line& maskedGPIOLine,
                                     const int durationMs)
 {
     // Set the masked GPIO line to the specified value
+    // 将经过 mask 的 GPIO 线路设置为指定值
     maskedGPIOLine.set_value(value);
     lg2::info("{GPIO_NAME} set to {GPIO_VALUE}", "GPIO_NAME", name,
               "GPIO_VALUE", value);
@@ -1178,12 +1236,15 @@ static int setMaskedGPIOOutputForMs(gpiod::line& maskedGPIOLine,
     gpioAssertTimer.async_wait(
         [maskedGPIOLine, value, name](const boost::system::error_code ec) {
             // Set the masked GPIO line back to the opposite value
+            // 将经过 mask 的 GPIO 线路恢复为相反值
             maskedGPIOLine.set_value(!value);
             lg2::info("{GPIO_NAME} released", "GPIO_NAME", name);
             if (ec)
             {
                 // operation_aborted is expected if timer is canceled before
                 // completion.
+                // 如果定时器在完成前被取消，出现 operation_aborted
+                // 是预期行为。
                 if (ec != boost::asio::error::operation_aborted)
                 {
                     lg2::error("{GPIO_NAME} async_wait failed: {ERROR_MSG}",
@@ -1198,6 +1259,7 @@ static int setGPIOOutputForMs(const ConfigData& config, bool value,
                               const int durationMs)
 {
     // If the requested GPIO is masked, use the mask line to set the output
+    // 如果请求的 GPIO 已被 mask，则使用 mask 线路来设置输出
     if (powerButtonMask && config.lineName == powerOutConfig.lineName)
     {
         return setMaskedGPIOOutputForMs(powerButtonMask, config.lineName, value,
@@ -1210,6 +1272,7 @@ static int setGPIOOutputForMs(const ConfigData& config, bool value,
     }
 
     // No mask set, so request and set the GPIO normally
+    // 未设置 mask，因此按常规方式申请并设置 GPIO
     gpiod::line gpioLine;
     if (!setGPIOOutput(config.lineName, value, gpioLine))
     {
@@ -1221,12 +1284,15 @@ static int setGPIOOutputForMs(const ConfigData& config, bool value,
     gpioAssertTimer.async_wait(
         [gpioLine, value, name](const boost::system::error_code ec) {
             // Set the GPIO line back to the opposite value
+            // 将 GPIO 线路恢复为相反值
             gpioLine.set_value(!value);
             lg2::info("{GPIO_NAME} released", "GPIO_NAME", name);
             if (ec)
             {
                 // operation_aborted is expected if timer is canceled before
                 // completion.
+                // 如果定时器在完成前被取消，出现 operation_aborted
+                // 是预期行为。
                 if (ec != boost::asio::error::operation_aborted)
                 {
                     lg2::error("{GPIO_NAME} async_wait failed: {ERROR_MSG}",
@@ -1331,11 +1397,14 @@ static void forcePowerOff()
     }
 
     // If the force off timer expires, then the power-button override failed
+    // 如果强制关机定时器超时，则说明电源按键 override 失败
     gpioAssertTimer.async_wait([](const boost::system::error_code ec) {
         if (ec)
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("Force power off async_wait failed: {ERROR_MSG}",
@@ -1363,6 +1432,8 @@ static void gracefulPowerOffTimerStart()
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("Graceful power-off async_wait failed: {ERROR_MSG}",
@@ -1386,6 +1457,8 @@ static void powerCycleTimerStart()
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("Power-cycle async_wait failed: {ERROR_MSG}",
@@ -1409,6 +1482,8 @@ static void powerOKWatchdogTimerStart()
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("power OK watchdog async_wait failed: {ERROR_MSG}",
@@ -1432,6 +1507,8 @@ static void warmResetCheckTimerStart()
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("Warm reset check async_wait failed: {ERROR_MSG}",
@@ -1449,12 +1526,15 @@ static void pohCounterTimerStart()
 {
     lg2::info("POH timer started");
     // Set the time-out as 1 hour, to align with POH command in ipmid
+    // 将超时时间设为 1 小时，与 ipmid 中的 POH 命令保持一致
     pohCounterTimer.expires_after(std::chrono::hours(1));
     pohCounterTimer.async_wait([](const boost::system::error_code& ec) {
         if (ec)
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("POH timer async_wait failed: {ERROR_MSG}",
@@ -1515,12 +1595,14 @@ static void currentHostStateMonitor()
     {
         pohCounterTimerStart();
         // Clear the restart cause set for the next restart
+        // 为下一次重启清空重启原因集合
         clearRestartCause();
     }
     else
     {
         pohCounterTimer.cancel();
         // Set the restart cause set for this restart
+        // 设置本次重启的重启原因集合
         setRestartCause();
     }
 
@@ -1554,6 +1636,7 @@ static void currentHostStateMonitor()
             }
 
             // We only want to check for CurrentHostState
+            // 我们只需检查 CurrentHostState
             if (properties.begin()->first != "CurrentHostState")
             {
                 return;
@@ -1572,6 +1655,7 @@ static void currentHostStateMonitor()
             {
                 pohCounterTimerStart();
                 // Clear the restart cause set for the next restart
+                // 为下一次重启清空重启原因集合
                 clearRestartCause();
                 sd_journal_send("MESSAGE=Host system DC power is on",
                                 "PRIORITY=%i", LOG_INFO,
@@ -1586,9 +1670,15 @@ static void currentHostStateMonitor()
                 // 'OperatingSystemState' to stay at 'Standby', even though
                 // system is OFF. Set 'OperatingSystemState' to 'Inactive'
                 // if HostState is turned to OFF.
+                // 在某些平台上，当电源状态变为 OFF 时，POST_COMPLETE GPIO 事件
+                // 无法正常工作。这会导致
+                // 'OperatingSystemState' 停留在 'Standby'，即使系统已经关机。
+                // 因此当 HostState 变为 OFF 时，将 'OperatingSystemState'
+                // 设为 'Inactive'。
                 setOperatingSystemState(OperatingSystemStateStage::Inactive);
 
                 // Set the restart cause set for this restart
+                // 设置本次重启的重启原因集合
                 setRestartCause();
 #ifdef USE_ACBOOT
                 resetACBootProperty();
@@ -1612,6 +1702,8 @@ static void sioPowerGoodWatchdogTimerStart()
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error(
@@ -1634,12 +1726,14 @@ static void powerStateOn(const Event event)
         case Event::powerOKDeAssert:
             setPowerState(PowerState::off);
             // DC power is unexpectedly lost, beep
+            // 直流电源意外掉电，发出蜂鸣
             beep(beepPowerFail);
             break;
         case Event::sioS5Assert:
             setPowerState(PowerState::transitionToOff);
 #if IGNORE_SOFT_RESETS_DURING_POST
             // Only recognize soft resets once host gets past POST COMPLETE
+            // 仅在主机完成 POST COMPLETE 之后才识别软复位
             if (operatingSystemState != OperatingSystemStateStage::Standby)
             {
                 ignoreNextSoftReset = true;
@@ -1655,6 +1749,7 @@ static void powerStateOn(const Event event)
             setPowerState(PowerState::checkForWarmReset);
 #if IGNORE_SOFT_RESETS_DURING_POST
             // Only recognize soft resets once host gets past POST COMPLETE
+            // 仅在主机完成 POST COMPLETE 之后才识别软复位
             if (operatingSystemState != OperatingSystemStateStage::Standby)
             {
                 ignoreNextSoftReset = true;
@@ -1706,6 +1801,7 @@ static void powerStateWaitForPowerOK(const Event event)
         case Event::powerOKAssert:
         {
             // Cancel any GPIO assertions held during the transition
+            // 取消转换过程中保持的所有 GPIO 有效电平
             gpioAssertTimer.cancel();
             powerOKWatchdogTimer.cancel();
             if (sioEnabled == true)
@@ -1799,6 +1895,7 @@ static void powerStateTransitionToOff(const Event event)
     {
         case Event::powerOKDeAssert:
             // Cancel any GPIO assertions held during the transition
+            // 取消转换过程中保持的所有 GPIO 有效电平
             gpioAssertTimer.cancel();
             setPowerState(PowerState::off);
             break;
@@ -1888,6 +1985,7 @@ static void powerStateTransitionToCycleOff(const Event event)
     {
         case Event::powerOKDeAssert:
             // Cancel any GPIO assertions held during the transition
+            // 取消转换过程中保持的所有 GPIO 有效电平
             gpioAssertTimer.cancel();
             setPowerState(PowerState::cycleOff);
             powerCycleTimerStart();
@@ -1948,6 +2046,7 @@ static void powerStateCheckForWarmReset(const Event event)
             warmResetCheckTimer.cancel();
             setPowerState(PowerState::off);
             // DC power is unexpectedly lost, beep
+            // 直流电源意外掉电，发出蜂鸣
             beep(beepPowerFail);
             break;
         default:
@@ -2092,12 +2191,15 @@ static void nmiReset(void)
     gpioAssertTimer.expires_after(std::chrono::milliseconds(nmiOutPulseTimeMs));
     gpioAssertTimer.async_wait([](const boost::system::error_code ec) {
         // restore the NMI_OUT GPIO line back to the opposite value
+        // 将 NMI_OUT GPIO 线路恢复为相反值
         nmiOutLine.set_value(!nmiOutConfig.polarity);
         lg2::info("{GPIO_NAME} released", "GPIO_NAME", nmiOutConfig.lineName);
         if (ec)
         {
             // operation_aborted is expected if timer is canceled before
             // completion.
+            // 如果定时器在完成前被取消，出现 operation_aborted
+            // 是预期行为。
             if (ec != boost::asio::error::operation_aborted)
             {
                 lg2::error("{GPIO_NAME} async_wait failed: {ERROR_MSG}",
@@ -2107,9 +2209,11 @@ static void nmiReset(void)
         }
     });
     // log to redfish
+    // 记录到 redfish 日志
     nmiDiagIntLog();
     lg2::info("NMI out action completed");
     // reset Enable Property
+    // 重置 Enable 属性
     nmiSetEnableProperty(false);
 }
 
@@ -2172,12 +2276,14 @@ static void setNmiSource()
         std::variant<std::string>{
             "xyz.openbmc_project.Chassis.Control.NMISource.BMCSourceSignal.FrontPanelButton"});
     // set Enable Property
+    // 设置 Enable 属性
     nmiSetEnableProperty(true);
 }
 
 static void nmiButtonHandler(bool state)
 {
     // Don't handle event if host not running and config doesn't force it
+    // 如果主机未运行且配置未强制处理，则不处理该事件
     if (!eventConfigMap["NMIWhenPoweredOff"] &&
         getHostState(powerState) !=
             "xyz.openbmc_project.State.Host.HostState.Running")
@@ -2320,6 +2426,7 @@ static sdbusplus::match dbusGPIOMatcher(const ConfigData& cfg,
 }
 
 // D-Bus property read functions
+// D-Bus 属性读取函数
 void reschedulePropertyRead(const ConfigData& configData);
 
 int getProperty(const ConfigData& configData)
@@ -2460,6 +2567,7 @@ int main(int argc, char* argv[])
     conn = std::make_shared<sdbusplus::asio::connection>(io);
 
     // Load GPIO's through json config file
+    // 通过 json 配置文件加载 GPIO
     const std::filesystem::path configFilePath =
         "/usr/share/x86-power-control/power-config-host" + node + ".json";
     if (loadConfigValues(configFilePath, powerSignalMap, TimerMap,
@@ -2472,10 +2580,16 @@ int main(int argc, char* argv[])
     Going forward for single hosts the old bus name without zero numbering
     will be removed when all other applications adapted to the
     bus name with zero numbering (xyz.openbmc_project.State.Host0). */
+    /* 目前，对于单主机系统，会在名称末尾附加 "0" 以增加
+     * 一个额外的 busname，例如：xyz.openbmc_project.State.Host0。
+     * 未来对于单主机，待其他所有应用都适配了带零编号的
+     * bus name（xyz.openbmc_project.State.Host0）后，
+     * 不带零编号的旧 bus name 将会被移除。 */
 
     if (node == "0")
     {
         // Request all the dbus names
+        // 申请所有 dbus 名称
         conn->request_name(hostDbusName.c_str());
         conn->request_name(chassisDbusName.c_str());
         conn->request_name(osDbusName.c_str());
@@ -2492,6 +2606,7 @@ int main(int argc, char* argv[])
     rstCauseDbusName += node;
 
     // Request all the dbus names
+    // 申请所有 dbus 名称
     conn->request_name(hostDbusName.c_str());
     conn->request_name(chassisDbusName.c_str());
     conn->request_name(osDbusName.c_str());
@@ -2507,6 +2622,7 @@ int main(int argc, char* argv[])
     }
 
     // Request power OK GPIO events
+    // 申请 power OK GPIO 事件
     if (powerOkConfig.type == ConfigType::GPIO)
     {
         if (!requestGPIOEvents(powerOkConfig.lineName, powerOKHandler,
@@ -2529,6 +2645,7 @@ int main(int argc, char* argv[])
     if (sioEnabled == true)
     {
         // Request SIO_POWER_GOOD GPIO events
+        // 申请 SIO_POWER_GOOD GPIO 事件
         if (sioPwrGoodConfig.type == ConfigType::GPIO)
         {
             if (!requestGPIOEvents(sioPwrGoodConfig.lineName,
@@ -2552,6 +2669,7 @@ int main(int argc, char* argv[])
         }
 
         // Request SIO_ONCONTROL GPIO events
+        // 申请 SIO_ONCONTROL GPIO 事件
         if (sioOnControlConfig.type == ConfigType::GPIO)
         {
             if (!requestGPIOEvents(sioOnControlConfig.lineName,
@@ -2575,6 +2693,7 @@ int main(int argc, char* argv[])
         }
 
         // Request SIO_S5 GPIO events
+        // 申请 SIO_S5 GPIO 事件
         if (sioS5Config.type == ConfigType::GPIO)
         {
             if (!requestGPIOEvents(sioS5Config.lineName, sioS5Handler,
@@ -2596,6 +2715,7 @@ int main(int argc, char* argv[])
     }
 
     // Request POWER_BUTTON GPIO events
+    // 申请 POWER_BUTTON GPIO 事件
     if (powerButtonConfig.type == ConfigType::GPIO)
     {
         if (!requestGPIOEvents(powerButtonConfig.lineName, powerButtonHandler,
@@ -2612,6 +2732,7 @@ int main(int argc, char* argv[])
     }
 
     // Request RESET_BUTTON GPIO events
+    // 申请 RESET_BUTTON GPIO 事件
     if (resetButtonConfig.type == ConfigType::GPIO)
     {
         if (!requestGPIOEvents(resetButtonConfig.lineName, resetButtonHandler,
@@ -2628,6 +2749,7 @@ int main(int argc, char* argv[])
     }
 
     // Request NMI_BUTTON GPIO events
+    // 申请 NMI_BUTTON GPIO 事件
     if (nmiButtonConfig.type == ConfigType::GPIO)
     {
         if (!nmiButtonConfig.lineName.empty())
@@ -2643,6 +2765,7 @@ int main(int argc, char* argv[])
     }
 
     // Request ID_BUTTON GPIO events
+    // 申请 ID_BUTTON GPIO 事件
     if (idButtonConfig.type == ConfigType::GPIO)
     {
         if (!idButtonConfig.lineName.empty())
@@ -2677,6 +2800,7 @@ int main(int argc, char* argv[])
 
     bool postCompleteConfigured = false;
     // Request POST_COMPLETE GPIO events
+    // 申请 POST_COMPLETE GPIO 事件
     if (postCompleteConfig.type == ConfigType::GPIO)
     {
         if (!requestGPIOEvents(postCompleteConfig.lineName, postCompleteHandler,
@@ -2695,6 +2819,7 @@ int main(int argc, char* argv[])
     }
 
     // initialize NMI_OUT GPIO.
+    // 初始化 NMI_OUT GPIO。
     if (!nmiOutConfig.lineName.empty())
     {
         setGPIOOutput(nmiOutConfig.lineName, !nmiOutConfig.polarity,
@@ -2702,6 +2827,7 @@ int main(int argc, char* argv[])
     }
 
     // Initialize POWER_OUT and RESET_OUT GPIO.
+    // 初始化 POWER_OUT 和 RESET_OUT GPIO。
     gpiod::line line;
     if (!powerOutConfig.lineName.empty())
     {
@@ -2731,12 +2857,15 @@ int main(int argc, char* argv[])
         return -1;
     }
     // Release line
+    // 释放线路
     line.reset();
 
     // Initialize the power state and operating system state
+    // 初始化电源状态和操作系统状态
     powerState = PowerState::off;
     operatingSystemState = OperatingSystemStateStage::Inactive;
     // Check power good
+    // 检查 power good 信号
 
     if (powerOkConfig.type == ConfigType::GPIO)
     {
@@ -2755,6 +2884,7 @@ int main(int argc, char* argv[])
         }
     }
     // Check if we need to start the Power Restore policy
+    // 检查是否需要启动 Power Restore 策略
     if (powerState != PowerState::on)
     {
         powerRestore.run();
@@ -2767,14 +2897,17 @@ int main(int argc, char* argv[])
     logStateTransition(powerState);
 
     // Power Control Service
+    // Power Control 服务
     sdbusplus::asio::object_server hostServer =
         sdbusplus::asio::object_server(conn);
 
     // Power Control Interface
+    // Power Control 接口
     hostIface =
         hostServer.add_interface("/xyz/openbmc_project/state/host" + node,
                                  "xyz.openbmc_project.State.Host");
     // Interface for IPMI/Redfish initiated host state transitions
+    // 用于处理 IPMI/Redfish 发起的主机状态转换的接口
     hostIface->register_property(
         "RequestedHostTransition",
         std::string("xyz.openbmc_project.State.Host.Transition.Off"),
@@ -2782,6 +2915,7 @@ int main(int argc, char* argv[])
             if (requested == "xyz.openbmc_project.State.Host.Transition.Off")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::gracefulPowerOffRequest);
@@ -2798,6 +2932,7 @@ int main(int argc, char* argv[])
                      "xyz.openbmc_project.State.Host.Transition.On")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::powerOnRequest);
@@ -2814,6 +2949,7 @@ int main(int argc, char* argv[])
                      "xyz.openbmc_project.State.Host.Transition.Reboot")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::powerCycleRequest);
@@ -2831,6 +2967,7 @@ int main(int argc, char* argv[])
                 "xyz.openbmc_project.State.Host.Transition.GracefulWarmReboot")
             {
                 // if reset button is masked, ignore this
+                // 如果 reset button 已被 mask，则忽略
                 if (!resetButtonMask)
                 {
                     sendPowerControlEvent(Event::gracefulPowerCycleRequest);
@@ -2848,6 +2985,7 @@ int main(int argc, char* argv[])
                 "xyz.openbmc_project.State.Host.Transition.ForceWarmReboot")
             {
                 // if reset button is masked, ignore this
+                // 如果 reset button 已被 mask，则忽略
                 if (!resetButtonMask)
                 {
                     sendPowerControlEvent(Event::resetRequest);
@@ -2879,10 +3017,12 @@ int main(int argc, char* argv[])
     hostIface->initialize();
 
     // Chassis Control Service
+    // Chassis Control 服务
     sdbusplus::asio::object_server chassisServer =
         sdbusplus::asio::object_server(conn);
 
     // Chassis Control Interface
+    // Chassis Control 接口
     chassisIface =
         chassisServer.add_interface("/xyz/openbmc_project/state/chassis" + node,
                                     "xyz.openbmc_project.State.Chassis");
@@ -2894,6 +3034,7 @@ int main(int argc, char* argv[])
             if (requested == "xyz.openbmc_project.State.Chassis.Transition.Off")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::powerOffRequest);
@@ -2910,6 +3051,7 @@ int main(int argc, char* argv[])
                      "xyz.openbmc_project.State.Chassis.Transition.On")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::powerOnRequest);
@@ -2926,6 +3068,7 @@ int main(int argc, char* argv[])
                      "xyz.openbmc_project.State.Chassis.Transition.PowerCycle")
             {
                 // if power button is masked, ignore this
+                // 如果 power button 已被 mask，则忽略
                 if (!powerButtonMask)
                 {
                     sendPowerControlEvent(Event::powerCycleRequest);
@@ -2955,10 +3098,12 @@ int main(int argc, char* argv[])
 
 #ifdef CHASSIS_SYSTEM_RESET
     // Chassis System Service
+    // Chassis System 服务
     sdbusplus::asio::object_server chassisSysServer =
         sdbusplus::asio::object_server(conn);
 
     // Chassis System Interface
+    // Chassis System 接口
     chassisSysIface = chassisSysServer.add_interface(
         "/xyz/openbmc_project/state/chassis_system0",
         "xyz.openbmc_project.State.Chassis");
@@ -3045,12 +3190,14 @@ int main(int argc, char* argv[])
     }
 #endif
     // Buttons Service
+    // Buttons 服务
     sdbusplus::asio::object_server buttonsServer =
         sdbusplus::asio::object_server(conn);
 
     if (!powerButtonConfig.lineName.empty())
     {
         // Power Button Interface
+        // Power Button 接口
         power_control::powerButtonIface = buttonsServer.add_interface(
             "/xyz/openbmc_project/chassis/buttons/power",
             "xyz.openbmc_project.Chassis.Buttons");
@@ -3082,11 +3229,13 @@ int main(int argc, char* argv[])
                     powerButtonMask.reset();
                 }
                 // Update the mask setting
+                // 更新 mask 设置
                 current = requested;
                 return 1;
             });
 
         // Check power button state
+        // 检查 power button 状态
         bool powerButtonPressed;
         if (powerButtonConfig.type == ConfigType::GPIO)
         {
@@ -3106,6 +3255,7 @@ int main(int argc, char* argv[])
     if (!resetButtonConfig.lineName.empty())
     {
         // Reset Button Interface
+        // Reset Button 接口
 
         resetButtonIface = buttonsServer.add_interface(
             "/xyz/openbmc_project/chassis/buttons/reset",
@@ -3138,11 +3288,13 @@ int main(int argc, char* argv[])
                     resetButtonMask.reset();
                 }
                 // Update the mask setting
+                // 更新 mask 设置
                 current = requested;
                 return 1;
             });
 
         // Check reset button state
+        // 检查 reset button 状态
         bool resetButtonPressed;
         if (resetButtonConfig.type == ConfigType::GPIO)
         {
@@ -3162,6 +3314,7 @@ int main(int argc, char* argv[])
     if (nmiButtonLine)
     {
         // NMI Button Interface
+        // NMI Button 接口
         nmiButtonIface = buttonsServer.add_interface(
             "/xyz/openbmc_project/chassis/buttons/nmi",
             "xyz.openbmc_project.Chassis.Buttons");
@@ -3171,6 +3324,7 @@ int main(int argc, char* argv[])
                 if (nmiButtonMasked == requested)
                 {
                     // NMI button mask is already set as requested, so no change
+                    // NMI button 的 mask 已被设为所请求的值，无需更改
                     return 1;
                 }
                 if (requested)
@@ -3184,11 +3338,13 @@ int main(int argc, char* argv[])
                     nmiButtonMasked = false;
                 }
                 // Update the mask setting
+                // 更新 mask 设置
                 current = nmiButtonMasked;
                 return 1;
             });
 
         // Check NMI button state
+        // 检查 NMI button 状态
         bool nmiButtonPressed;
         if (nmiButtonConfig.type == ConfigType::GPIO)
         {
@@ -3207,10 +3363,12 @@ int main(int argc, char* argv[])
     if (nmiOutLine)
     {
         // NMI out Service
+        // NMI out 服务
         sdbusplus::asio::object_server nmiOutServer =
             sdbusplus::asio::object_server(conn);
 
         // NMI out Interface
+        // NMI out 接口
         nmiOutIface = nmiOutServer.add_interface(
             "/xyz/openbmc_project/control/host" + node + "/nmi",
             "xyz.openbmc_project.Control.Host.NMI");
@@ -3221,11 +3379,13 @@ int main(int argc, char* argv[])
     if (idButtonLine)
     {
         // ID Button Interface
+        // ID Button 接口
         idButtonIface = buttonsServer.add_interface(
             "/xyz/openbmc_project/chassis/buttons/id",
             "xyz.openbmc_project.Chassis.Buttons");
 
         // Check ID button state
+        // 检查 ID button 状态
         bool idButtonPressed;
         if (idButtonConfig.type == ConfigType::GPIO)
         {
@@ -3259,10 +3419,12 @@ int main(int argc, char* argv[])
         }
 
         // OS State Service
+        // OS State 服务
         sdbusplus::asio::object_server osServer =
             sdbusplus::asio::object_server(conn);
 
         // OS State Interface
+        // OS State 接口
         osIface = osServer.add_interface(
             "/xyz/openbmc_project/state/host" + node,
             "xyz.openbmc_project.State.OperatingSystem.Status");
@@ -3270,6 +3432,9 @@ int main(int argc, char* argv[])
         // Get the initial OS state based on POST complete
         //      Asserted, OS state is "Standby" (ready to boot)
         //      De-Asserted, OS state is "Inactive"
+        // 根据 POST complete 获取初始 OS 状态
+        //      Asserted（有效）时，OS 状态为 "Standby"（准备启动）
+        //      De-Asserted（无效）时，OS 状态为 "Inactive"
 
         osIface->register_property(
             "OperatingSystemState",
@@ -3278,10 +3443,12 @@ int main(int argc, char* argv[])
         osIface->initialize();
 
         // Restart Cause Service
+        // Restart Cause 服务
         sdbusplus::asio::object_server restartCauseServer =
             sdbusplus::asio::object_server(conn);
 
         // Restart Cause Interface
+        // Restart Cause 接口
         restartCauseIface = restartCauseServer.add_interface(
             "/xyz/openbmc_project/control/host" + node + "/restart_cause",
             "xyz.openbmc_project.Control.Host.RestartCause");
@@ -3316,6 +3483,8 @@ int main(int argc, char* argv[])
     {
         // Set to indicate BMC's power control module is ready to take
         // the inputs [PWR_GOOD] from the HPM FPGA
+        // 置位以表明 BMC 的 power control 模块已就绪，可以接收
+        // 来自 HPM FPGA 的输入 [PWR_GOOD]
         gpiod::line hpmLine;
         if (!setGPIOOutput(hpmStbyEnConfig.lineName, hpmStbyEnConfig.polarity,
                            hpmLine))

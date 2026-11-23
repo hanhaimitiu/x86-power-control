@@ -224,8 +224,10 @@ TEST_F(DbusConfigTest, ParsesAllFields)
     EXPECT_EQ(powerOk.path, "/xyz/openbmc_project/example");
     EXPECT_EQ(powerOk.interface, "xyz.openbmc_project.Example.Value");
     // The "Property" field is stored in lineName.
+    // "Property" 字段存储在 lineName 中。
     EXPECT_EQ(powerOk.lineName, "PowerOk");
     // The "Polarity" filed is forced active-high.
+    // "Polarity" 字段被强制为高电平有效（active-high）。
     EXPECT_TRUE(powerOk.polarity);
     EXPECT_FALSE(powerOk.matchRegex.has_value());
 }
